@@ -74,6 +74,8 @@ GTI_APP_ROOT=/app
 GTI_CONFIG_DIR=/app/config
 GTI_REPO_ROOT=/app/git
 GTI_HTML_DIR=/app/html
+GTI_COMMIT_USER_NAME=GitMonitor
+GTI_COMMIT_USER_EMAIL=gitmonitor@local
 ```
 
 本地开发时你可以直接指定端口和根目录：
@@ -97,6 +99,13 @@ go run ./cmd/server --port 8081 --app-root $(pwd)/runtime --html-dir $(pwd)/web/
 GTI_CONFIG_DIR=./tmp/config
 GTI_REPO_ROOT=./tmp/git
 GTI_HTML_DIR=./web/dist
+```
+
+自动提交、自动合并提交默认会使用以下 Git 身份；你也可以按需覆盖：
+
+```bash
+GTI_COMMIT_USER_NAME=GitMonitor
+GTI_COMMIT_USER_EMAIL=gitmonitor@local
 ```
 
 ## Docker 构建与运行

@@ -25,4 +25,6 @@ ENV GTI_ADDR=:8080
 ENV GTI_CONFIG_DIR=/app/config
 ENV GTI_REPO_ROOT=/app/git
 ENV GTI_HTML_DIR=/app/html
+ENV GTI_COMMIT_USER_NAME=GitMonitor
+ENV GTI_COMMIT_USER_EMAIL=gitmonitor@local
 CMD ["/app/bin/gti-monitor"]

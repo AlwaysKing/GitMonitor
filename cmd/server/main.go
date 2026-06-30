@@ -25,7 +25,7 @@ func main() {
 		log.Fatalf("init config store: %v", err)
 	}
 
-	gitManager := gitops.NewManager(options.repoRoot)
+	gitManager := gitops.NewManager(options.repoRoot, options.gitUserName, options.gitUserEmail)
 	syncService := scheduler.NewService(store, gitManager)
 	if err := syncService.Load(context.Background()); err != nil {
 		log.Fatalf("load repositories: %v", err)
@@ -59,11 +59,13 @@ func main() {
 }
 
 type options struct {
-	addr      string
-	appRoot   string
-	configDir string
-	repoRoot  string
-	htmlDir   string
+	addr         string
+	appRoot      string
+	configDir    string
+	repoRoot     string
+	htmlDir      string
+	gitUserName  string
+	gitUserEmail string
 }
 
 func loadOptions() options {
@@ -71,6 +73,8 @@ func loadOptions() options {
 	defaultConfigDir := getenv("GTI_CONFIG_DIR", filepath.Join(defaultRoot, "config"))
 	defaultRepoRoot := getenv("GTI_REPO_ROOT", filepath.Join(defaultRoot, "git"))
 	defaultHTMLDir := getenv("GTI_HTML_DIR", filepath.Join(defaultRoot, "html"))
+	defaultGitUserName := getenv("GTI_COMMIT_USER_NAME", "GitMonitor")
+	defaultGitUserEmail := getenv("GTI_COMMIT_USER_EMAIL", "gitmonitor@local")
 	defaultAddr := resolveAddr()
 
 	addrFlag := flag.String("addr", defaultAddr, "HTTP listen address, for example :8080")
@@ -79,12 +83,16 @@ func loadOptions() options {
 	configDirFlag := flag.String("config-dir", defaultConfigDir, "config directory path")
 	repoRootFlag := flag.String("repo-root", defaultRepoRoot, "git repositories root path")
 	htmlDirFlag := flag.String("html-dir", defaultHTMLDir, "frontend static files path")
+	gitUserNameFlag := flag.String("git-user-name", defaultGitUserName, "default git user.name for automatic commits")
+	gitUserEmailFlag := flag.String("git-user-email", defaultGitUserEmail, "default git user.email for automatic commits")
 	flag.Parse()
 
 	appRoot := *appRootFlag
 	configDir := *configDirFlag
 	repoRoot := *repoRootFlag
 	htmlDir := *htmlDirFlag
+	gitUserName := *gitUserNameFlag
+	gitUserEmail := *gitUserEmailFlag
 	addr := *addrFlag
 
 	if flagPassed("app-root") {
@@ -109,6 +117,8 @@ func loadOptions() options {
 		configDir: configDir,
 		repoRoot:  repoRoot,
 		htmlDir:   htmlDir,
+		gitUserName: gitUserName,
+		gitUserEmail: gitUserEmail,
 	}
 }
 

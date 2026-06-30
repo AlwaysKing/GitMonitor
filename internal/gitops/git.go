@@ -20,7 +20,9 @@ type CredentialProvider interface {
 }
 
 type Manager struct {
-	repoRoot string
+	repoRoot     string
+	gitUserName  string
+	gitUserEmail string
 }
 
 type CommitTestResult struct {
@@ -36,8 +38,12 @@ type LocalRepository struct {
 	Revision  string
 }
 
-func NewManager(repoRoot string) *Manager {
-	return &Manager{repoRoot: repoRoot}
+func NewManager(repoRoot, gitUserName, gitUserEmail string) *Manager {
+	return &Manager{
+		repoRoot:     repoRoot,
+		gitUserName:  strings.TrimSpace(gitUserName),
+		gitUserEmail: strings.TrimSpace(gitUserEmail),
+	}
 }
 
 func (m *Manager) EnsureRepoRoot() error {
@@ -130,6 +136,9 @@ func (m *Manager) TestCommit(ctx context.Context, repo model.RepoConfig, cred *m
 	if _, _, err := m.runGit(ctx, repo.LocalPath, cred, "rev-parse", "--is-inside-work-tree"); err != nil {
 		return CommitTestResult{}, err
 	}
+	if err := m.ensureRepoIdentity(ctx, repo.LocalPath, cred); err != nil {
+		return CommitTestResult{}, err
+	}
 
 	name, _, err := m.runGit(ctx, repo.LocalPath, cred, "config", "--get", "user.name")
 	if err != nil || strings.TrimSpace(name) == "" {
@@ -165,6 +174,9 @@ func (m *Manager) Sync(ctx context.Context, repo model.RepoConfig, cred *model.C
 		if err := m.Clone(ctx, repo, cred); err != nil {
 			return m.finish(result, "error", err.Error(), false, false, false, false, ""), err
 		}
+	}
+	if err := m.ensureRepoIdentity(ctx, repo.LocalPath, cred); err != nil {
+		return m.finish(result, "error", err.Error(), false, false, false, false, ""), err
 	}
 
 	headBefore, _, err := m.runGit(ctx, repo.LocalPath, cred, "rev-parse", "HEAD")
@@ -385,6 +397,40 @@ func (m *Manager) isDirty(ctx context.Context, repoPath string, cred *model.Cred
 		return false, err
 	}
 	return strings.TrimSpace(out) != "", nil
+}
+
+func (m *Manager) ensureRepoIdentity(ctx context.Context, repoPath string, cred *model.Credential) error {
+	name, _, err := m.runGit(ctx, repoPath, cred, "config", "--get", "user.name")
+	if err == nil && strings.TrimSpace(name) != "" {
+		email, _, emailErr := m.runGit(ctx, repoPath, cred, "config", "--get", "user.email")
+		if emailErr == nil && strings.TrimSpace(email) != "" {
+			return nil
+		}
+	}
+
+	if m.gitUserName == "" || m.gitUserEmail == "" {
+		return nil
+	}
+
+	currentName := strings.TrimSpace(name)
+	if currentName == "" {
+		if _, _, err := m.runGit(ctx, repoPath, cred, "config", "user.name", m.gitUserName); err != nil {
+			return err
+		}
+	}
+
+	email, _, emailErr := m.runGit(ctx, repoPath, cred, "config", "--get", "user.email")
+	currentEmail := ""
+	if emailErr == nil {
+		currentEmail = strings.TrimSpace(email)
+	}
+	if currentEmail == "" {
+		if _, _, err := m.runGit(ctx, repoPath, cred, "config", "user.email", m.gitUserEmail); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (m *Manager) commitTime(ctx context.Context, repoPath string, cred *model.Credential, revision, path string) time.Time {
