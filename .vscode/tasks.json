@@ -1,0 +1,46 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Run Backend",
+      "type": "shell",
+      "command": "zsh",
+      "args": [
+        "-lc",
+        "mkdir -p \"${workspaceFolder}/appdata/bin\" \"${workspaceFolder}/appdata\" && go build -o \"${workspaceFolder}/appdata/bin/gti-monitor\" ./cmd/server && \"${workspaceFolder}/appdata/bin/gti-monitor\" --port 8806 --app-root \"${workspaceFolder}/appdata\""
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Run Frontend",
+      "type": "shell",
+      "command": "npm",
+      "args": [
+        "run",
+        "dev",
+        "--",
+        "--port",
+        "8805",
+        "--host",
+        "0.0.0.0"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/web"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": false
+      },
+      "problemMatcher": []
+    }
+  ]
+}

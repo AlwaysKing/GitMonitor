@@ -1,0 +1,14 @@
+services:
+  gti-monitor:
+    build: .
+    image: gti-monitor:local
+    ports:
+      - "8080:8080"
+    environment:
+      GTI_ADDR: ":8080"
+      GTI_CONFIG_DIR: /app/config
+      GTI_REPO_ROOT: /app/git
+      GTI_HTML_DIR: /app/html
+    volumes:
+      - ./runtime/git:/app/git
+      - ./runtime/config:/app/config
