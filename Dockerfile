@@ -16,9 +16,10 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/gti-monitor ./cmd/ser
 FROM alpine:3.22
 RUN apk add --no-cache git openssh-client ca-certificates
 WORKDIR /app
+RUN mkdir -p /app /app/git /app/config /app/html /app/bin \
+  && chmod 777 /app /app/git /app/config
 COPY --from=go-builder /out/gti-monitor /app/bin/gti-monitor
 COPY --from=web-builder /src/web/dist /app/html
-RUN mkdir -p /app/git /app/config /app/html /app/bin
 EXPOSE 8080
 ENV GTI_ADDR=:8080
 ENV GTI_CONFIG_DIR=/app/config

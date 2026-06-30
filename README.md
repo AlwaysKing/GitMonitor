@@ -119,6 +119,25 @@ docker run -d \
 http://localhost:8080
 ```
 
+如果你希望容器以内置的任意非 root 用户运行，例如 `2000:2000`，当前镜像已经会在构建时预创建 `/app`、`/app/git`、`/app/config`，并放开运行期写权限，因此可以直接这样启动：
+
+```bash
+docker run -d \
+  -p 8080:8080 \
+  --user 2000:2000 \
+  -v $(pwd)/runtime/git:/app/git \
+  -v $(pwd)/runtime/config:/app/config \
+  --name gti-monitor \
+  ghcr.io/alwaysking/gitmonitor:latest
+```
+
+如果你挂载了宿主机目录，仍建议同步保证宿主机目录本身可写：
+
+```bash
+mkdir -p ./runtime/git ./runtime/config
+chmod -R 777 ./runtime
+```
+
 ## GitHub Actions 镜像发布
 
 工作流文件位于：
