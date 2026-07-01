@@ -293,16 +293,28 @@ func (m *Manager) fetch(ctx context.Context, repo model.RepoConfig, cred *model.
 	if strings.TrimSpace(previousHead) == "" {
 		return strings.TrimSpace(fetchHead), true, nil
 	}
-	isAncestor, _, err := m.runGit(ctx, repo.LocalPath, cred, "merge-base", "--is-ancestor", strings.TrimSpace(fetchHead), strings.TrimSpace(previousHead))
-	if err == nil && isAncestor == "" {
+
+	if strings.TrimSpace(fetchHead) == strings.TrimSpace(previousHead) {
 		return strings.TrimSpace(fetchHead), false, nil
 	}
-	if _, _, err := m.runGit(ctx, repo.LocalPath, cred, "merge-base", "--is-ancestor", strings.TrimSpace(previousHead), strings.TrimSpace(fetchHead)); err == nil {
+
+	diffOutput, _, err := m.runGit(ctx, repo.LocalPath, cred, "rev-list", "--left-right", "--count", fmt.Sprintf("%s...%s", strings.TrimSpace(previousHead), strings.TrimSpace(fetchHead)))
+	if err != nil {
+		return "", false, err
+	}
+	parts := strings.Fields(diffOutput)
+	if len(parts) != 2 {
+		return "", false, fmt.Errorf("unexpected rev-list output: %q", strings.TrimSpace(diffOutput))
+	}
+
+	remoteOnly, err := strconv.Atoi(parts[1])
+	if err != nil {
+		return "", false, fmt.Errorf("parse remote-only commit count: %w", err)
+	}
+	if remoteOnly > 0 {
 		return strings.TrimSpace(fetchHead), true, nil
 	}
-	if strings.TrimSpace(fetchHead) != strings.TrimSpace(previousHead) {
-		return strings.TrimSpace(fetchHead), true, nil
-	}
+
 	return strings.TrimSpace(fetchHead), false, nil
 }
 

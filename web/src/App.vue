@@ -515,20 +515,12 @@ setupAutoTests(editForm, editPullTest, editCommitTest)
               <thead>
                 <tr>
                   <th>名称</th>
-                  <th>类型</th>
-                  <th>说明</th>
                   <th>操作</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-for="cred in filteredCredentials" :key="cred.id">
                   <td><strong>{{ cred.name }}</strong></td>
-                  <td><span class="badge">{{ cred.type }}</span></td>
-                  <td>
-                    <div class="credential-meta">
-                      <span>{{ cred.type === 'http' ? cred.matchUrl : cred.maskedSecretHint }}</span>
-                    </div>
-                  </td>
                   <td>
                     <div class="table-actions">
                       <button v-if="cred.type === 'ssh' && cred.publicKey" class="secondary slim" @click="openPublicKeyModal(cred)">查看公钥</button>
@@ -537,7 +529,7 @@ setupAutoTests(editForm, editPullTest, editCommitTest)
                   </td>
                 </tr>
                 <tr v-if="!filteredCredentials.length">
-                  <td colspan="4" class="empty-row">暂无符合条件的凭据</td>
+                  <td colspan="2" class="empty-row">暂无符合条件的凭据</td>
                 </tr>
               </tbody>
             </table>
@@ -569,7 +561,7 @@ setupAutoTests(editForm, editPullTest, editCommitTest)
             <select v-model="repoForm.credentialId">
               <option value="">无</option>
               <option v-for="cred in credentials" :key="cred.id" :value="cred.id">
-                {{ cred.name }} / {{ cred.type }}{{ cred.matchUrl ? ` / ${cred.matchUrl}` : '' }}
+                {{ cred.name }}
               </option>
             </select>
           </label>
@@ -701,7 +693,7 @@ setupAutoTests(editForm, editPullTest, editCommitTest)
             <select v-model="editForm.credentialId">
               <option value="">无</option>
               <option v-for="cred in credentials" :key="cred.id" :value="cred.id">
-                {{ cred.name }} / {{ cred.type }}{{ cred.matchUrl ? ` / ${cred.matchUrl}` : '' }}
+                {{ cred.name }}
               </option>
             </select>
           </label>
