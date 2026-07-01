@@ -42,8 +42,10 @@ type RepoConfig struct {
 	LastStatus        string    `json:"lastStatus,omitempty"`
 	LastPushAt        *time.Time `json:"lastPushAt,omitempty"`
 	LastPushStatus    string    `json:"lastPushStatus,omitempty"`
+	LastPushError     string    `json:"lastPushError,omitempty"`
 	LastPullAt        *time.Time `json:"lastPullAt,omitempty"`
 	LastPullStatus    string    `json:"lastPullStatus,omitempty"`
+	LastPullError     string    `json:"lastPullError,omitempty"`
 	LastRevision      string    `json:"lastRevision,omitempty"`
 }
 
@@ -68,9 +70,12 @@ type SyncResult struct {
 	PullAttempted      bool      `json:"pullAttempted"`
 	PullSucceeded      bool      `json:"pullSucceeded"`
 	PullFinishedAt     *time.Time `json:"pullFinishedAt,omitempty"`
+	PullMessage        string    `json:"pullMessage,omitempty"`
 	PushAttempted      bool      `json:"pushAttempted"`
 	PushSucceeded      bool      `json:"pushSucceeded"`
 	PushFinishedAt     *time.Time `json:"pushFinishedAt,omitempty"`
+	PushMessage        string    `json:"pushMessage,omitempty"`
+	Logs               []LogEntry `json:"logs,omitempty"`
 }
 
 type RepoStatus struct {

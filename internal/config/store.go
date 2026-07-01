@@ -104,8 +104,10 @@ func (s *Store) SaveRepository(repo model.RepoConfig) (model.RepoConfig, error) 
 		repo.LastError = s.appConfig.Repositories[index].LastError
 		repo.LastPushAt = s.appConfig.Repositories[index].LastPushAt
 		repo.LastPushStatus = s.appConfig.Repositories[index].LastPushStatus
+		repo.LastPushError = s.appConfig.Repositories[index].LastPushError
 		repo.LastPullAt = s.appConfig.Repositories[index].LastPullAt
 		repo.LastPullStatus = s.appConfig.Repositories[index].LastPullStatus
+		repo.LastPullError = s.appConfig.Repositories[index].LastPullError
 		repo.LastRevision = s.appConfig.Repositories[index].LastRevision
 		s.appConfig.Repositories[index] = repo
 	} else {
@@ -145,16 +147,20 @@ func (s *Store) UpdateRepositorySyncState(id string, result model.SyncResult, la
 		s.appConfig.Repositories[index].LastPullAt = result.PullFinishedAt
 		if result.PullSucceeded {
 			s.appConfig.Repositories[index].LastPullStatus = "success"
+			s.appConfig.Repositories[index].LastPullError = ""
 		} else {
 			s.appConfig.Repositories[index].LastPullStatus = "error"
+			s.appConfig.Repositories[index].LastPullError = result.PullMessage
 		}
 	}
 	if result.PushAttempted {
 		s.appConfig.Repositories[index].LastPushAt = result.PushFinishedAt
 		if result.PushSucceeded {
 			s.appConfig.Repositories[index].LastPushStatus = "success"
+			s.appConfig.Repositories[index].LastPushError = ""
 		} else {
 			s.appConfig.Repositories[index].LastPushStatus = "error"
+			s.appConfig.Repositories[index].LastPushError = result.PushMessage
 		}
 	}
 	if strings.TrimSpace(result.RepositoryRevision) != "" {

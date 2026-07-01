@@ -169,15 +169,21 @@ func (m *Manager) Sync(ctx context.Context, repo model.RepoConfig, cred *model.C
 		StartedAt: time.Now(),
 		Status:    "running",
 	}
+	appendStepLog(&result, "info", "开始同步仓库")
 
 	if _, err := os.Stat(filepath.Join(repo.LocalPath, ".git")); err != nil {
+		appendStepLog(&result, "info", "本地仓库不存在，开始 clone")
 		if err := m.Clone(ctx, repo, cred); err != nil {
+			appendStepLog(&result, "error", "clone 失败: "+err.Error())
 			return m.finish(result, "error", err.Error(), false, false, false, false, ""), err
 		}
+		appendStepLog(&result, "info", "clone 完成")
 	}
 	if err := m.ensureRepoIdentity(ctx, repo.LocalPath, cred); err != nil {
+		appendStepLog(&result, "error", "配置 git 提交身份失败: "+err.Error())
 		return m.finish(result, "error", err.Error(), false, false, false, false, ""), err
 	}
+	appendStepLog(&result, "info", "git 提交身份已确认")
 
 	headBefore, _, err := m.runGit(ctx, repo.LocalPath, cred, "rev-parse", "HEAD")
 	if err != nil {
@@ -187,55 +193,87 @@ func (m *Manager) Sync(ctx context.Context, repo model.RepoConfig, cred *model.C
 	if dirty, err := m.isDirty(ctx, repo.LocalPath, cred); err == nil && dirty {
 		if !repo.AutoCommitEnabled {
 			err := errors.New("working tree has local changes while auto commit is disabled")
+			appendStepLog(&result, "error", "检测到本地改动，但自动提交已禁用")
 			return m.finish(result, "error", err.Error(), false, false, false, false, ""), err
 		}
+		appendStepLog(&result, "info", "检测到本地改动，开始自动提交")
 		if err := m.autoCommit(ctx, repo, cred); err != nil {
+			appendStepLog(&result, "error", "自动提交失败: "+err.Error())
 			return m.finish(result, "error", err.Error(), false, false, false, false, ""), err
 		}
 		result.LocalCommitted = true
+		appendStepLog(&result, "info", "自动提交完成")
+	} else {
+		appendStepLog(&result, "info", "本地工作区无待提交改动")
 	}
 
 	if repo.AutoPullEnabled {
+		appendStepLog(&result, "info", "开始拉取远端更新")
 		fetchHead, remoteUpdated, err := m.fetch(ctx, repo, cred, headBefore)
 		if err != nil {
 			finishedAt := time.Now()
 			result.PullAttempted = true
 			result.PullSucceeded = false
 			result.PullFinishedAt = &finishedAt
+			result.PullMessage = err.Error()
+			appendStepLog(&result, "error", "拉取远端失败: "+err.Error())
 			return m.finish(result, "error", err.Error(), false, result.LocalCommitted, false, false, ""), err
 		}
 		result.RemoteUpdated = remoteUpdated
 		result.PullAttempted = true
 		result.PullSucceeded = true
+		result.PullMessage = ""
 		finishedAt := time.Now()
 		result.PullFinishedAt = &finishedAt
 
 		if remoteUpdated {
+			appendStepLog(&result, "info", "检测到远端更新，开始合并")
 			resolved, err := m.mergeRemote(ctx, repo, cred, fetchHead)
 			if err != nil {
 				finishedAt := time.Now()
 				result.PullSucceeded = false
 				result.PullFinishedAt = &finishedAt
+				result.PullMessage = err.Error()
+				appendStepLog(&result, "error", "合并远端更新失败: "+err.Error())
 				return m.finish(result, "error", err.Error(), true, result.LocalCommitted, false, resolved, ""), err
 			}
 			result.ResolvedConflicts = resolved
 			finishedAt := time.Now()
 			result.PullFinishedAt = &finishedAt
+			result.PullMessage = ""
+			if resolved {
+				appendStepLog(&result, "info", "合并完成，已自动解决冲突")
+			} else {
+				appendStepLog(&result, "info", "合并完成")
+			}
+		} else {
+			appendStepLog(&result, "info", "远端无新提交")
 		}
+	} else {
+		appendStepLog(&result, "info", "自动拉取已禁用")
 	}
 
 	result.PushAttempted = true
+	appendStepLog(&result, "info", "开始检查是否需要推送")
 	pushAttempted, err := m.pushIfNeeded(ctx, repo, cred)
 	if err != nil {
 		finishedAt := time.Now()
 		result.PushSucceeded = false
 		result.PushFinishedAt = &finishedAt
+		result.PushMessage = err.Error()
+		appendStepLog(&result, "error", "推送失败: "+err.Error())
 		return m.finish(result, "error", err.Error(), result.RemoteUpdated, result.LocalCommitted, false, result.ResolvedConflicts, ""), err
 	}
 	result.PushSucceeded = true
 	finishedAt := time.Now()
 	result.PushFinishedAt = &finishedAt
+	result.PushMessage = ""
 	result.Pushed = pushAttempted
+	if pushAttempted {
+		appendStepLog(&result, "info", "推送完成")
+	} else {
+		appendStepLog(&result, "info", "无需推送，本地与远端已同步")
+	}
 
 	headAfter, _, err := m.runGit(ctx, repo.LocalPath, cred, "rev-parse", "HEAD")
 	if err == nil && strings.TrimSpace(headAfter) != strings.TrimSpace(headBefore) {
@@ -550,5 +588,14 @@ func (m *Manager) finish(result model.SyncResult, status, message string, remote
 	result.Pushed = pushed
 	result.ResolvedConflicts = resolved
 	result.RepositoryRevision = revision
+	appendStepLog(&result, status, message)
 	return result
+}
+
+func appendStepLog(result *model.SyncResult, level, message string) {
+	result.Logs = append(result.Logs, model.LogEntry{
+		Time:    time.Now(),
+		Level:   level,
+		Message: message,
+	})
 }

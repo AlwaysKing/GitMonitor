@@ -10,6 +10,7 @@ const editingRepoId = ref('')
 const showRepoModal = ref(false)
 const showCredentialModal = ref(false)
 const showPublicKeyModal = ref(false)
+const showLogsModal = ref(false)
 const currentView = ref('repositories')
 const toasts = ref([])
 const syncingRepoIds = ref(new Set())
@@ -18,6 +19,7 @@ const repoPullTest = reactive({ state: 'idle', message: '' })
 const repoCommitTest = reactive({ state: 'idle', message: '' })
 const editPullTest = reactive({ state: 'idle', message: '' })
 const editCommitTest = reactive({ state: 'idle', message: '' })
+const selectedRepoLogs = ref(null)
 
 const repoForm = reactive({
   name: '',
@@ -112,6 +114,12 @@ function runStatusSymbol(status) {
   if (status === 'success') return '✓'
   if (status === 'error') return '✕'
   return '--'
+}
+
+function runStatusTitle(status, errorMessage) {
+  if (status === 'error' && errorMessage) return errorMessage
+  if (status === 'success') return '同步成功'
+  return ''
 }
 
 async function request(path, options = {}) {
@@ -365,6 +373,11 @@ async function removeRepository(id) {
   }
 }
 
+function openLogs(repoStatus) {
+  selectedRepoLogs.value = repoStatus
+  showLogsModal.value = true
+}
+
 function beginEdit(repo) {
   editingRepoId.value = repo.id
   editForm.name = repo.name
@@ -462,13 +475,13 @@ setupAutoTests(editForm, editPullTest, editCommitTest)
                   <td>
                     <div class="op-status-cell">
                       <span>{{ formatTime(item.repo.lastPushAt) }}</span>
-                      <span :class="['status-symbol', item.repo.lastPushStatus || 'idle']">{{ runStatusSymbol(item.repo.lastPushStatus) }}</span>
+                      <span :class="['status-symbol', item.repo.lastPushStatus || 'idle']" :title="runStatusTitle(item.repo.lastPushStatus, item.repo.lastPushError)">{{ runStatusSymbol(item.repo.lastPushStatus) }}</span>
                     </div>
                   </td>
                   <td>
                     <div class="op-status-cell">
                       <span>{{ formatTime(item.repo.lastPullAt) }}</span>
-                      <span :class="['status-symbol', item.repo.lastPullStatus || 'idle']">{{ runStatusSymbol(item.repo.lastPullStatus) }}</span>
+                      <span :class="['status-symbol', item.repo.lastPullStatus || 'idle']" :title="runStatusTitle(item.repo.lastPullStatus, item.repo.lastPullError)">{{ runStatusSymbol(item.repo.lastPullStatus) }}</span>
                     </div>
                   </td>
                   <td class="repo-actions-cell">
@@ -480,6 +493,7 @@ setupAutoTests(editForm, editPullTest, editCommitTest)
                         <span class="sync-label">{{ isRepoSyncing(item.repo.id) ? '同步中' : '同步' }}</span>
                         <span class="sync-slot right" aria-hidden="true" />
                       </button>
+                      <button class="secondary slim repo-action-button" @click="openLogs(item)">日志</button>
                       <button class="secondary slim repo-action-button" @click="beginEdit(item.repo)">编辑</button>
                       <button class="danger slim repo-action-button" @click="removeRepository(item.repo.id)">删除</button>
                     </div>
@@ -638,6 +652,28 @@ setupAutoTests(editForm, editPullTest, editCommitTest)
         <div class="modal-actions">
           <button class="secondary" @click="showPublicKeyModal = false">关闭</button>
           <button @click="copyPublicKey">复制公钥</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="showLogsModal && selectedRepoLogs" class="modal-backdrop" @click.self="showLogsModal = false">
+      <div class="modal-card logs-card">
+        <div class="modal-head">
+          <h2>同步日志</h2>
+        </div>
+        <div class="logs-body">
+          <p>{{ selectedRepoLogs.repo.name }}</p>
+          <div v-if="selectedRepoLogs.logs?.length" class="logs-list">
+            <div v-for="(log, index) in [...selectedRepoLogs.logs].reverse()" :key="`${log.time}_${index}`" class="log-row">
+              <span class="log-time">{{ formatTime(log.time) }}</span>
+              <span :class="['log-level', log.level]">{{ log.level }}</span>
+              <span class="log-message">{{ log.message }}</span>
+            </div>
+          </div>
+          <div v-else class="empty-row">暂无同步日志</div>
+        </div>
+        <div class="modal-actions">
+          <button class="secondary" @click="showLogsModal = false">关闭</button>
         </div>
       </div>
     </div>

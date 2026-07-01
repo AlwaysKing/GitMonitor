@@ -34,6 +34,17 @@ type runner struct {
 	nextRunAt *time.Time
 }
 
+func appendRunnerLogs(existing []model.LogEntry, additions []model.LogEntry) []model.LogEntry {
+	if len(additions) == 0 {
+		return existing
+	}
+	existing = append(existing, additions...)
+	if len(existing) > 200 {
+		existing = existing[len(existing)-200:]
+	}
+	return existing
+}
+
 func NewService(store RepositoryStore, manager *gitops.Manager) *Service {
 	return &Service{
 		store:   store,
@@ -98,7 +109,7 @@ func (s *Service) Trigger(ctx context.Context, repoID string) (*model.SyncResult
 		r.repo = updated
 	}
 	r.lastRun = &result
-	r.logs = append(r.logs, model.LogEntry{Time: time.Now(), Level: result.Status, Message: result.Message})
+	r.logs = appendRunnerLogs(r.logs, result.Logs)
 	s.mu.Unlock()
 	return &result, err
 }
@@ -162,10 +173,7 @@ func (s *Service) startLocked(parent context.Context, r *runner) {
 					r.repo = updated
 				}
 				r.lastRun = &result
-				r.logs = append(r.logs, model.LogEntry{Time: time.Now(), Level: result.Status, Message: result.Message})
-				if len(r.logs) > 50 {
-					r.logs = r.logs[len(r.logs)-50:]
-				}
+				r.logs = appendRunnerLogs(r.logs, result.Logs)
 				s.mu.Unlock()
 			}
 		}

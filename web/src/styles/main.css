@@ -242,6 +242,10 @@ h1 {
   width: min(760px, calc(100vw - 48px));
 }
 
+.logs-card {
+  width: min(920px, calc(100vw - 48px));
+}
+
 .simple-topbar {
   margin-bottom: 18px;
 }
@@ -269,6 +273,52 @@ h1 {
 .public-key-body p {
   margin-bottom: 10px;
   color: var(--muted);
+}
+
+.logs-body p {
+  margin-bottom: 12px;
+  color: var(--muted);
+}
+
+.logs-list {
+  display: grid;
+  gap: 10px;
+  max-height: 420px;
+  overflow: auto;
+}
+
+.log-row {
+  display: grid;
+  grid-template-columns: 148px 64px minmax(0, 1fr);
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-alt);
+}
+
+.log-time {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.log-level {
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.log-level.ok,
+.log-level.success {
+  color: var(--success);
+}
+
+.log-level.error {
+  color: var(--danger);
+}
+
+.log-message {
+  min-width: 0;
+  word-break: break-word;
 }
 
 .public-key-output {
