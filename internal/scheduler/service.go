@@ -22,6 +22,8 @@ type Service struct {
 	mu      sync.RWMutex
 	store   RepositoryStore
 	manager *gitops.Manager
+	ctx     context.Context
+	cancel  context.CancelFunc
 	runners map[string]*runner
 }
 
@@ -46,23 +48,29 @@ func appendRunnerLogs(existing []model.LogEntry, additions []model.LogEntry) []m
 }
 
 func NewService(store RepositoryStore, manager *gitops.Manager) *Service {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &Service{
 		store:   store,
 		manager: manager,
+		ctx:     ctx,
+		cancel:  cancel,
 		runners: map[string]*runner{},
 	}
 }
 
 func (s *Service) Load(ctx context.Context) error {
 	for _, repo := range s.store.ListRepositories() {
-		if err := s.Upsert(ctx, repo); err != nil {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if err := s.Upsert(repo); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (s *Service) Upsert(ctx context.Context, repo model.RepoConfig) error {
+func (s *Service) Upsert(repo model.RepoConfig) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if existing, ok := s.runners[repo.ID]; ok && existing.cancel != nil {
@@ -71,7 +79,7 @@ func (s *Service) Upsert(ctx context.Context, repo model.RepoConfig) error {
 	r := &runner{repo: repo}
 	s.runners[repo.ID] = r
 	if repo.Enabled {
-		s.startLocked(ctx, r)
+		s.startLocked(r)
 	}
 	return nil
 }
@@ -134,6 +142,7 @@ func (s *Service) GetStatuses() []model.RepoStatus {
 func (s *Service) Stop() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.cancel()
 	for _, r := range s.runners {
 		if r.cancel != nil {
 			r.cancel()
@@ -141,8 +150,8 @@ func (s *Service) Stop() {
 	}
 }
 
-func (s *Service) startLocked(parent context.Context, r *runner) {
-	ctx, cancel := context.WithCancel(parent)
+func (s *Service) startLocked(r *runner) {
+	ctx, cancel := context.WithCancel(s.ctx)
 	r.cancel = cancel
 	go func() {
 		ticker := time.NewTicker(time.Duration(r.repo.SyncIntervalSec) * time.Second)

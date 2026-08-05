@@ -37,8 +37,8 @@ type Server struct {
 }
 
 type scanResponse struct {
-	Imported int                     `json:"imported"`
-	Skipped  int                     `json:"skipped"`
+	Imported int                       `json:"imported"`
+	Skipped  int                       `json:"skipped"`
 	Items    []model.ScannedRepository `json:"items,omitempty"`
 }
 
@@ -183,7 +183,7 @@ func (s *Server) handleRepositories(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
-		if err := s.scheduler.Upsert(r.Context(), saved); err != nil {
+		if err := s.scheduler.Upsert(saved); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
@@ -243,7 +243,7 @@ func (s *Server) handleScanRepositories(w http.ResponseWriter, r *http.Request) 
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
-		if err := s.scheduler.Upsert(r.Context(), saved); err != nil {
+		if err := s.scheduler.Upsert(saved); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}
@@ -342,7 +342,7 @@ func (s *Server) handleRepositoryByID(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, err)
 			return
 		}
-		if err := s.scheduler.Upsert(r.Context(), saved); err != nil {
+		if err := s.scheduler.Upsert(saved); err != nil {
 			writeError(w, http.StatusInternalServerError, err)
 			return
 		}

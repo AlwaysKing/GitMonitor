@@ -1,6 +1,7 @@
 package gitops
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -157,6 +158,9 @@ func (m *Manager) TestCommit(ctx context.Context, repo model.RepoConfig, cred *m
 		return CommitTestResult{Ready: true, Message: "可提交，当前无待提交文件"}, nil
 	}
 
+	if err := m.ensureAutoCommitSafe(ctx, repo.LocalPath, cred); err != nil {
+		return CommitTestResult{Ready: false, Message: err.Error()}, nil
+	}
 	message, err := m.previewCommitMessage(ctx, repo.LocalPath, cred)
 	if err != nil {
 		return CommitTestResult{}, err
@@ -327,10 +331,10 @@ func (m *Manager) mergeRemote(ctx context.Context, repo model.RepoConfig, cred *
 		return false, err
 	}
 	if err := m.resolveConflictsByTimestamp(ctx, repo, cred, fetchHead); err != nil {
-		return false, err
+		return false, m.abortMerge(ctx, repo.LocalPath, cred, err)
 	}
 	if _, _, err := m.runGit(ctx, repo.LocalPath, cred, "commit", "--no-edit", "-m", "chore(sync): auto-resolve merge conflicts"); err != nil {
-		return false, err
+		return false, m.abortMerge(ctx, repo.LocalPath, cred, err)
 	}
 	return true, nil
 }
@@ -383,6 +387,9 @@ func (m *Manager) pushIfNeeded(ctx context.Context, repo model.RepoConfig, cred 
 func (m *Manager) autoCommit(ctx context.Context, repo model.RepoConfig, cred *model.Credential) error {
 	if !repo.AutoCommitEnabled {
 		return nil
+	}
+	if err := m.ensureAutoCommitSafe(ctx, repo.LocalPath, cred); err != nil {
+		return err
 	}
 	if _, _, err := m.runGit(ctx, repo.LocalPath, cred, "add", "-A"); err != nil {
 		return err
@@ -447,6 +454,161 @@ func (m *Manager) isDirty(ctx context.Context, repoPath string, cred *model.Cred
 		return false, err
 	}
 	return strings.TrimSpace(out) != "", nil
+}
+
+func (m *Manager) ensureAutoCommitSafe(ctx context.Context, repoPath string, cred *model.Credential) error {
+	if operation, ok, err := m.gitOperationInProgress(ctx, repoPath, cred); err != nil {
+		return err
+	} else if ok {
+		return fmt.Errorf("repository has unfinished %s; resolve or abort it before automatic commit", operation)
+	}
+
+	unmerged, err := m.unmergedFiles(ctx, repoPath, cred)
+	if err != nil {
+		return err
+	}
+	if len(unmerged) > 0 {
+		return fmt.Errorf("repository has unmerged files: %s", strings.Join(unmerged, ", "))
+	}
+
+	marked, err := m.filesWithConflictMarkers(ctx, repoPath, cred)
+	if err != nil {
+		return err
+	}
+	if len(marked) > 0 {
+		return fmt.Errorf("working tree contains conflict markers: %s", strings.Join(marked, ", "))
+	}
+	return nil
+}
+
+func (m *Manager) gitOperationInProgress(ctx context.Context, repoPath string, cred *model.Credential) (string, bool, error) {
+	checks := []struct {
+		name string
+		path string
+	}{
+		{name: "merge", path: "MERGE_HEAD"},
+		{name: "cherry-pick", path: "CHERRY_PICK_HEAD"},
+		{name: "revert", path: "REVERT_HEAD"},
+		{name: "rebase", path: "rebase-merge"},
+		{name: "rebase", path: "rebase-apply"},
+	}
+	for _, check := range checks {
+		path, _, err := m.runGit(ctx, repoPath, cred, "rev-parse", "--git-path", check.path)
+		if err != nil {
+			return "", false, err
+		}
+		if _, err := os.Stat(resolveGitPath(repoPath, strings.TrimSpace(path))); err == nil {
+			return check.name, true, nil
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return "", false, err
+		}
+	}
+	return "", false, nil
+}
+
+func (m *Manager) unmergedFiles(ctx context.Context, repoPath string, cred *model.Credential) ([]string, error) {
+	out, _, err := m.runGit(ctx, repoPath, cred, "diff", "--name-only", "--diff-filter=U")
+	if err != nil {
+		return nil, err
+	}
+	return splitLines(out), nil
+}
+
+func (m *Manager) filesWithConflictMarkers(ctx context.Context, repoPath string, cred *model.Credential) ([]string, error) {
+	paths, err := m.dirtyFilePaths(ctx, repoPath, cred)
+	if err != nil {
+		return nil, err
+	}
+
+	marked := []string{}
+	for _, path := range paths {
+		hasMarkers, err := hasConflictMarkers(filepath.Join(repoPath, path))
+		if err != nil {
+			return nil, err
+		}
+		if hasMarkers {
+			marked = append(marked, path)
+		}
+	}
+	return marked, nil
+}
+
+func (m *Manager) dirtyFilePaths(ctx context.Context, repoPath string, cred *model.Credential) ([]string, error) {
+	commands := [][]string{
+		{"diff", "--name-only"},
+		{"diff", "--cached", "--name-only"},
+		{"ls-files", "--others", "--exclude-standard"},
+	}
+	seen := map[string]bool{}
+	paths := []string{}
+	for _, args := range commands {
+		out, _, err := m.runGit(ctx, repoPath, cred, args...)
+		if err != nil {
+			return nil, err
+		}
+		for _, path := range splitLines(out) {
+			if seen[path] {
+				continue
+			}
+			seen[path] = true
+			paths = append(paths, path)
+		}
+	}
+	return paths, nil
+}
+
+func hasConflictMarkers(path string) (bool, error) {
+	info, err := os.Stat(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if !info.Mode().IsRegular() {
+		return false, nil
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	sawStart := false
+	sawSeparator := false
+	for scanner.Scan() {
+		line := scanner.Text()
+		switch {
+		case strings.HasPrefix(line, "<<<<<<< "):
+			sawStart = true
+			sawSeparator = false
+		case sawStart && strings.HasPrefix(line, "======="):
+			sawSeparator = true
+		case sawStart && sawSeparator && strings.HasPrefix(line, ">>>>>>> "):
+			return true, nil
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return false, err
+	}
+	return false, nil
+}
+
+func resolveGitPath(repoPath, path string) string {
+	if filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(repoPath, path)
+}
+
+func (m *Manager) abortMerge(ctx context.Context, repoPath string, cred *model.Credential, cause error) error {
+	if _, _, err := m.runGit(ctx, repoPath, cred, "merge", "--abort"); err != nil {
+		return fmt.Errorf("%w; additionally failed to abort merge: %v", cause, err)
+	}
+	return cause
 }
 
 func (m *Manager) ensureRepoIdentity(ctx context.Context, repoPath string, cred *model.Credential) error {
