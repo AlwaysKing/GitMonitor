@@ -400,6 +400,40 @@ h1 {
   white-space: nowrap;
 }
 
+.status-meta-cell {
+  justify-content: center;
+}
+
+.status-meta {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.status-popover {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 50%;
+  z-index: 20;
+  display: none;
+  min-width: 220px;
+  max-width: 320px;
+  padding: 10px 12px;
+  color: var(--text);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  transform: translateX(-50%);
+  white-space: normal;
+  word-break: break-word;
+}
+
+.status-meta:hover .status-popover {
+  display: block;
+}
+
 .status-symbol {
   display: inline-grid;
   place-items: center;

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 
 const apiBase = '/api'
 
@@ -20,6 +20,7 @@ const repoCommitTest = reactive({ state: 'idle', message: '' })
 const editPullTest = reactive({ state: 'idle', message: '' })
 const editCommitTest = reactive({ state: 'idle', message: '' })
 const selectedRepoLogs = ref(null)
+let repositoriesRefreshTimer = null
 
 const repoForm = reactive({
   name: '',
@@ -120,6 +121,10 @@ function runStatusTitle(status, errorMessage) {
   if (status === 'error' && errorMessage) return errorMessage
   if (status === 'success') return '同步成功'
   return ''
+}
+
+function hasStatusMeta(status, time, errorMessage) {
+  return Boolean(status === 'success' || status === 'error' || time || errorMessage)
 }
 
 async function request(path, options = {}) {
@@ -256,6 +261,23 @@ async function refreshRepositories() {
     showToast(error.message, 'error')
   } finally {
     busy.value = false
+  }
+}
+
+function startRepositoriesPolling() {
+  stopRepositoriesPolling()
+  repositoriesRefreshTimer = setInterval(() => {
+    if (currentView.value !== 'repositories' || busy.value) {
+      return
+    }
+    loadAll()
+  }, 10000)
+}
+
+function stopRepositoriesPolling() {
+  if (repositoriesRefreshTimer) {
+    clearInterval(repositoriesRefreshTimer)
+    repositoriesRefreshTimer = null
   }
 }
 
@@ -410,7 +432,23 @@ async function saveEdit(id) {
   }
 }
 
-onMounted(loadAll)
+watch(currentView, (value) => {
+  if (value === 'repositories') {
+    startRepositoriesPolling()
+    return
+  }
+  stopRepositoriesPolling()
+})
+
+onMounted(() => {
+  loadAll()
+  startRepositoriesPolling()
+})
+
+onUnmounted(() => {
+  stopRepositoriesPolling()
+})
+
 setupAutoTests(repoForm, repoPullTest, repoCommitTest)
 setupAutoTests(editForm, editPullTest, editCommitTest)
 </script>
@@ -459,6 +497,7 @@ setupAutoTests(editForm, editPullTest, editCommitTest)
                   <th>分支</th>
                   <th>Commit</th>
                   <th>周期</th>
+                  <th>触发时间</th>
                   <th>Push</th>
                   <th>Pull</th>
                   <th class="repo-actions-header">操作</th>
@@ -472,16 +511,29 @@ setupAutoTests(editForm, editPullTest, editCommitTest)
                   <td>{{ item.repo.branch }}</td>
                   <td><code class="commit-hash">{{ shortRevision(item.repo.lastRevision || item.lastRun?.repositoryRevision) }}</code></td>
                   <td>{{ item.repo.syncIntervalSec }} 秒</td>
+                  <td>{{ formatTime(item.repo.lastSyncAt) }}</td>
                   <td>
-                    <div class="op-status-cell">
-                      <span>{{ formatTime(item.repo.lastPushAt) }}</span>
-                      <span :class="['status-symbol', item.repo.lastPushStatus || 'idle']" :title="runStatusTitle(item.repo.lastPushStatus, item.repo.lastPushError)">{{ runStatusSymbol(item.repo.lastPushStatus) }}</span>
+                    <div class="op-status-cell status-meta-cell">
+                      <div class="status-meta">
+                        <span :class="['status-symbol', item.repo.lastPushStatus || 'idle']">{{ runStatusSymbol(item.repo.lastPushStatus) }}</span>
+                        <div v-if="hasStatusMeta(item.repo.lastPushStatus, item.repo.lastPushAt, item.repo.lastPushError)" class="status-popover">
+                          <div>时间: {{ formatTime(item.repo.lastPushAt) }}</div>
+                          <div v-if="item.repo.lastPushError">错误: {{ item.repo.lastPushError }}</div>
+                          <div v-else>{{ runStatusTitle(item.repo.lastPushStatus, item.repo.lastPushError) }}</div>
+                        </div>
+                      </div>
                     </div>
                   </td>
                   <td>
-                    <div class="op-status-cell">
-                      <span>{{ formatTime(item.repo.lastPullAt) }}</span>
-                      <span :class="['status-symbol', item.repo.lastPullStatus || 'idle']" :title="runStatusTitle(item.repo.lastPullStatus, item.repo.lastPullError)">{{ runStatusSymbol(item.repo.lastPullStatus) }}</span>
+                    <div class="op-status-cell status-meta-cell">
+                      <div class="status-meta">
+                        <span :class="['status-symbol', item.repo.lastPullStatus || 'idle']">{{ runStatusSymbol(item.repo.lastPullStatus) }}</span>
+                        <div v-if="hasStatusMeta(item.repo.lastPullStatus, item.repo.lastPullAt, item.repo.lastPullError)" class="status-popover">
+                          <div>时间: {{ formatTime(item.repo.lastPullAt) }}</div>
+                          <div v-if="item.repo.lastPullError">错误: {{ item.repo.lastPullError }}</div>
+                          <div v-else>{{ runStatusTitle(item.repo.lastPullStatus, item.repo.lastPullError) }}</div>
+                        </div>
+                      </div>
                     </div>
                   </td>
                   <td class="repo-actions-cell">
@@ -500,7 +552,7 @@ setupAutoTests(editForm, editPullTest, editCommitTest)
                   </td>
                 </tr>
                 <tr v-if="!filteredRepositories.length">
-                  <td colspan="7" class="empty-row">暂无符合条件的仓库</td>
+                  <td colspan="8" class="empty-row">暂无符合条件的仓库</td>
                 </tr>
               </tbody>
             </table>
