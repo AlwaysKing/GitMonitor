@@ -30,6 +30,7 @@ type Service struct {
 type runner struct {
 	repo      model.RepoConfig
 	cancel    context.CancelFunc
+	wake      chan struct{}
 	lastRun   *model.SyncResult
 	logs      []model.LogEntry
 	running   bool
@@ -73,10 +74,15 @@ func (s *Service) Load(ctx context.Context) error {
 func (s *Service) Upsert(repo model.RepoConfig) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if existing, ok := s.runners[repo.ID]; ok && existing.cancel != nil {
-		existing.cancel()
+	if existing, ok := s.runners[repo.ID]; ok {
+		existing.repo = repo
+		if repo.Enabled && existing.cancel == nil {
+			s.startLocked(existing)
+		}
+		s.wakeLocked(existing)
+		return nil
 	}
-	r := &runner{repo: repo}
+	r := &runner{repo: repo, wake: make(chan struct{}, 1)}
 	s.runners[repo.ID] = r
 	if repo.Enabled {
 		s.startLocked(r)
@@ -91,6 +97,7 @@ func (s *Service) Remove(id string) {
 		if existing.cancel != nil {
 			existing.cancel()
 		}
+		s.wakeLocked(existing)
 		delete(s.runners, id)
 	}
 }
@@ -118,6 +125,7 @@ func (s *Service) Trigger(ctx context.Context, repoID string) (*model.SyncResult
 	}
 	r.lastRun = &result
 	r.logs = appendRunnerLogs(r.logs, result.Logs)
+	s.wakeLocked(r)
 	s.mu.Unlock()
 	return &result, err
 }
@@ -151,42 +159,82 @@ func (s *Service) Stop() {
 }
 
 func (s *Service) startLocked(r *runner) {
+	if r.cancel != nil {
+		return
+	}
+	if r.wake == nil {
+		r.wake = make(chan struct{}, 1)
+	}
 	ctx, cancel := context.WithCancel(s.ctx)
 	r.cancel = cancel
 	go func() {
-		ticker := time.NewTicker(time.Duration(r.repo.SyncIntervalSec) * time.Second)
-		defer ticker.Stop()
 		for {
-			next := time.Now().Add(time.Duration(r.repo.SyncIntervalSec) * time.Second)
 			s.mu.Lock()
+			for !r.repo.Enabled || r.running {
+				r.nextRunAt = nil
+				s.mu.Unlock()
+				select {
+				case <-ctx.Done():
+					return
+				case <-r.wake:
+				}
+				s.mu.Lock()
+			}
+			interval := time.Duration(r.repo.SyncIntervalSec) * time.Second
+			next := time.Now().Add(interval)
 			r.nextRunAt = &next
 			s.mu.Unlock()
 
+			timer := time.NewTimer(interval)
 			select {
 			case <-ctx.Done():
+				timer.Stop()
 				return
-			case <-ticker.C:
-				s.mu.Lock()
-				if r.running {
-					s.mu.Unlock()
-					continue
+			case <-r.wake:
+				if !timer.Stop() {
+					select {
+					case <-timer.C:
+					default:
+					}
 				}
-				r.running = true
-				s.mu.Unlock()
-
-				result, _ := s.runSync(context.Background(), r.repo)
-
-				s.mu.Lock()
-				r.running = false
-				if updated, ok := s.store.GetRepository(r.repo.ID); ok {
-					r.repo = updated
-				}
-				r.lastRun = &result
-				r.logs = appendRunnerLogs(r.logs, result.Logs)
-				s.mu.Unlock()
+				continue
+			case <-timer.C:
 			}
+
+			s.mu.Lock()
+			if !r.repo.Enabled || r.running {
+				r.nextRunAt = nil
+				s.mu.Unlock()
+				continue
+			}
+			repo := r.repo
+			r.running = true
+			r.nextRunAt = nil
+			s.mu.Unlock()
+
+			result, _ := s.runSync(context.Background(), repo)
+
+			s.mu.Lock()
+			r.running = false
+			if updated, ok := s.store.GetRepository(repo.ID); ok {
+				r.repo = updated
+			}
+			r.lastRun = &result
+			r.logs = appendRunnerLogs(r.logs, result.Logs)
+			s.wakeLocked(r)
+			s.mu.Unlock()
 		}
 	}()
+}
+
+func (s *Service) wakeLocked(r *runner) {
+	if r.wake == nil {
+		return
+	}
+	select {
+	case r.wake <- struct{}{}:
+	default:
+	}
 }
 
 func (s *Service) runSync(ctx context.Context, repo model.RepoConfig) (model.SyncResult, error) {

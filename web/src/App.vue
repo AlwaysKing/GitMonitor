@@ -20,6 +20,12 @@ const repoCommitTest = reactive({ state: 'idle', message: '' })
 const editPullTest = reactive({ state: 'idle', message: '' })
 const editCommitTest = reactive({ state: 'idle', message: '' })
 const selectedRepoLogs = ref(null)
+const statusTooltip = reactive({
+  visible: false,
+  x: 0,
+  y: 0,
+  lines: []
+})
 let repositoriesRefreshTimer = null
 
 const repoForm = reactive({
@@ -125,6 +131,35 @@ function runStatusTitle(status, errorMessage) {
 
 function hasStatusMeta(status, time, errorMessage) {
   return Boolean(status === 'success' || status === 'error' || time || errorMessage)
+}
+
+function statusMetaLines(status, time, errorMessage) {
+  const lines = []
+  if (time) {
+    lines.push(`时间: ${formatTime(time)}`)
+  }
+  if (errorMessage) {
+    lines.push(`错误: ${errorMessage}`)
+  } else {
+    const title = runStatusTitle(status, errorMessage)
+    if (title) {
+      lines.push(title)
+    }
+  }
+  return lines
+}
+
+function showStatusTooltip(event, status, time, errorMessage) {
+  if (!hasStatusMeta(status, time, errorMessage)) return
+  const rect = event.currentTarget.getBoundingClientRect()
+  statusTooltip.lines = statusMetaLines(status, time, errorMessage)
+  statusTooltip.x = rect.left + rect.width / 2
+  statusTooltip.y = rect.bottom + 8
+  statusTooltip.visible = true
+}
+
+function hideStatusTooltip() {
+  statusTooltip.visible = false
 }
 
 async function request(path, options = {}) {
@@ -515,24 +550,22 @@ setupAutoTests(editForm, editPullTest, editCommitTest)
                   <td>
                     <div class="op-status-cell status-meta-cell">
                       <div class="status-meta">
-                        <span :class="['status-symbol', item.repo.lastPushStatus || 'idle']">{{ runStatusSymbol(item.repo.lastPushStatus) }}</span>
-                        <div v-if="hasStatusMeta(item.repo.lastPushStatus, item.repo.lastPushAt, item.repo.lastPushError)" class="status-popover">
-                          <div>时间: {{ formatTime(item.repo.lastPushAt) }}</div>
-                          <div v-if="item.repo.lastPushError">错误: {{ item.repo.lastPushError }}</div>
-                          <div v-else>{{ runStatusTitle(item.repo.lastPushStatus, item.repo.lastPushError) }}</div>
-                        </div>
+                        <span
+                          :class="['status-symbol', item.repo.lastPushStatus || 'idle']"
+                          @mouseenter="showStatusTooltip($event, item.repo.lastPushStatus, item.repo.lastPushAt, item.repo.lastPushError)"
+                          @mouseleave="hideStatusTooltip"
+                        >{{ runStatusSymbol(item.repo.lastPushStatus) }}</span>
                       </div>
                     </div>
                   </td>
                   <td>
                     <div class="op-status-cell status-meta-cell">
                       <div class="status-meta">
-                        <span :class="['status-symbol', item.repo.lastPullStatus || 'idle']">{{ runStatusSymbol(item.repo.lastPullStatus) }}</span>
-                        <div v-if="hasStatusMeta(item.repo.lastPullStatus, item.repo.lastPullAt, item.repo.lastPullError)" class="status-popover">
-                          <div>时间: {{ formatTime(item.repo.lastPullAt) }}</div>
-                          <div v-if="item.repo.lastPullError">错误: {{ item.repo.lastPullError }}</div>
-                          <div v-else>{{ runStatusTitle(item.repo.lastPullStatus, item.repo.lastPullError) }}</div>
-                        </div>
+                        <span
+                          :class="['status-symbol', item.repo.lastPullStatus || 'idle']"
+                          @mouseenter="showStatusTooltip($event, item.repo.lastPullStatus, item.repo.lastPullAt, item.repo.lastPullError)"
+                          @mouseleave="hideStatusTooltip"
+                        >{{ runStatusSymbol(item.repo.lastPullStatus) }}</span>
                       </div>
                     </div>
                   </td>
@@ -781,5 +814,15 @@ setupAutoTests(editForm, editPullTest, editCommitTest)
         {{ toast.message }}
       </div>
     </div>
+
+    <Teleport to="body">
+      <div
+        v-if="statusTooltip.visible"
+        class="status-popover floating-status-popover"
+        :style="{ left: `${statusTooltip.x}px`, top: `${statusTooltip.y}px` }"
+      >
+        <div v-for="line in statusTooltip.lines" :key="line">{{ line }}</div>
+      </div>
+    </Teleport>
   </div>
 </template>

@@ -412,11 +412,8 @@ h1 {
 }
 
 .status-popover {
-  position: absolute;
-  top: calc(100% + 10px);
-  left: 50%;
-  z-index: 20;
-  display: none;
+  position: fixed;
+  z-index: 1000;
   min-width: 220px;
   max-width: 320px;
   padding: 10px 12px;
@@ -428,9 +425,10 @@ h1 {
   transform: translateX(-50%);
   white-space: normal;
   word-break: break-word;
+  pointer-events: none;
 }
 
-.status-meta:hover .status-popover {
+.floating-status-popover {
   display: block;
 }
 
